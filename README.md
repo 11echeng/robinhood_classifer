@@ -57,6 +57,17 @@ NOTE: sql ide is in [Stack Overflow](https://data.stackexchange.com/stackoverflo
 * Q6. For posts created in 2020, what were the top 10 tags?
 * Q7. For the questions created in 2017, what was the average time (in seconds) between
 
+### Amazon Questions:
+* Q1. Write a query to identify Merchant that got churned out for Feb 2017?
+Also, how would you write in dynamic way to identify churn for any given month and year?
+Definition of Churn – Merchant having at least 1 order for 2016 and 0 order for 2017
+
+* Q2. Write a query to report WOW (Week over Week) sales for each product category for trailing 6 weeks?
+
+### Dicks Questions:
+* Q1. See imgs directory
+
+* Q2. See imgs directory
 
 ### Getting Started:
 Check out this project repo, then add an .env credentials, case-sensitive, to the root if not there already:
