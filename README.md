@@ -10,7 +10,8 @@ In order to improve user retention and lower churn, the growth team at Robinhood
 features_data.csv - contains user level data such as:
 * user_id - unique id for every user
 * risk_tolerance - self-reported risk tolerance of the user
-* investment_experience - self-reported liquidity needs of the user
+* investment_experience - self-reported investment experience of the user
+* liquidity_needs - self-reported liquidity needs of the user
 * time_horizon - self-reported investment time horizon of the user
 * platform - which platform (iOS or Android) the user is on
 * time_spent - amount of time spent on the app

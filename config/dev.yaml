@@ -1,8 +1,0 @@
-# Place any environment variables for deployment
-# name:value pairs in the app_parameter section
-app_parameters:
- host: robinhood.cjomywuwikjl.us-east-2.rds.amazonaws.com
- database: postgres
- user: postgres
- password: password
- port: 5432

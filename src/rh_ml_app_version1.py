@@ -1,37 +1,51 @@
-# Import Libraries
+'''
+author: chatGPT
+'''
+# Import necessary libraries
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, StratifiedKFold
+
+# Data Manipulation and Handling
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix
+from sklearn.metrics import (
+    classification_report,
+    roc_auc_score,
+    confusion_matrix,
+    roc_curve,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+
+# Machine Learning Libraries
 import xgboost as xgb
 import lightgbm as lgb
+
+# Hyperparameter Optimization
+import optuna
+
+# Handling Imbalanced Data
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
-import optuna
-from optuna.integration import SklearnPruningCallback
-import warnings
-warnings.filterwarnings('ignore')
 
-# Load Data
-def load_data():
-    # Assuming df is already loaded
-    # df = pd.read_csv('your_dataset.csv')
-    # For demonstration, let's assume df is provided
-    return df.copy()
+# Visualization
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Preprocess Data
+# Set random seed for reproducibility
+RANDOM_STATE = 42
+
+
 def preprocess_data(df):
-    # Drop unnecessary columns
-    df = df.drop('user_id', axis=1)
-
-    # Define target and features
+    """
+    Preprocess the data by separating features and target,
+    and creating a preprocessor pipeline.
+    """
+    # Separate features and target variable
+    X = df.drop(['user_id', 'churn_flag'], axis=1)
     y = df['churn_flag']
-    X = df.drop('churn_flag', axis=1)
 
     # Identify categorical and numerical columns
     categorical_cols = [
@@ -40,219 +54,311 @@ def preprocess_data(df):
         'liquidity_needs',
         'platform',
         'instrument_type_first_traded',
-        'time_horizon'
+        'time_horizon',
     ]
     numerical_cols = ['time_spent', 'first_deposit_amount']
 
-    # Preprocessing for numerical data
+    # Define preprocessing steps
     numerical_transformer = StandardScaler()
-
-    # Preprocessing for categorical data
     categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
-    # Combine preprocessing steps
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numerical_transformer, numerical_cols),
-            ('cat', categorical_transformer, categorical_cols)
+            ('cat', categorical_transformer, categorical_cols),
         ]
     )
 
     return X, y, preprocessor
 
-# Handle Class Imbalance
-def balance_data(X, y):
-    smote = SMOTE(random_state=42)
-    X_resampled, y_resampled = smote.fit_resample(X, y)
-    return X_resampled, y_resampled
 
-# Define Model Training and Evaluation Pipeline
-def train_evaluate_model(X_train, y_train, X_test, y_test, preprocessor, model, model_name):
-    # Create a pipeline
-    clf = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('classifier', model)
-    ])
-
-    # Fit the model
-    clf.fit(X_train, y_train)
-
-    # Predict probabilities
-    y_proba = clf.predict_proba(X_test)[:, 1]
-    y_pred = clf.predict(X_test)
-
-    # Evaluate the model
-    roc_auc = roc_auc_score(y_test, y_proba)
-    print(f"{model_name} ROC AUC Score: {roc_auc:.4f}")
-    print(f"{model_name} Classification Report:\n{classification_report(y_test, y_pred)}")
-
-    return clf, roc_auc
-
-# Hyperparameter Tuning with Optuna
-def hyperparameter_tuning(X_train, y_train, preprocessor, model_name):
-    def objective(trial):
-        if model_name == 'LogisticRegression':
-            penalty = trial.suggest_categorical('penalty', ['l1', 'l2'])
-            C = trial.suggest_float('C', 1e-4, 1e2, log=True)
-            solver = 'liblinear' if penalty == 'l1' else 'lbfgs'
-            model = LogisticRegression(penalty=penalty, C=C, solver=solver, random_state=42)
-        elif model_name == 'RandomForest':
-            n_estimators = trial.suggest_int('n_estimators', 100, 1000, step=100)
-            max_depth = trial.suggest_int('max_depth', 2, 20)
-            min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
-            model = RandomForestClassifier(
-                n_estimators=n_estimators,
-                max_depth=max_depth,
-                min_samples_split=min_samples_split,
-                random_state=42
-            )
-        elif model_name == 'XGBoost':
-            param = {
-                'verbosity': 0,
-                'objective': 'binary:logistic',
-                'eval_metric': 'auc',
-                'use_label_encoder': False,
-                'booster': 'gbtree',
-                'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', 3, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-                'subsample': trial.suggest_float('subsample', 0.5, 1.0),
-                'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
-            }
-            model = xgb.XGBClassifier(**param)
-        elif model_name == 'LightGBM':
-            param = {
-                'objective': 'binary',
-                'metric': 'auc',
-                'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
-                'max_depth': trial.suggest_int('max_depth', -1, 15),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-                'num_leaves': trial.suggest_int('num_leaves', 31, 256),
-                'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 1.0),
-                'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 1.0),
-                'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
-            }
-            model = lgb.LGBMClassifier(**param)
-        else:
-            return 0
-
-        # Create pipeline
-        clf = Pipeline(steps=[
+def get_model_pipeline(preprocessor, model):
+    """
+    Create a pipeline that includes preprocessing,
+    SMOTE oversampling, and the model.
+    """
+    pipeline = ImbPipeline(
+        steps=[
             ('preprocessor', preprocessor),
-            ('classifier', model)
-        ])
+            ('smote', SMOTE(random_state=RANDOM_STATE)),
+            ('classifier', model),
+        ]
+    )
+    return pipeline
 
-        # Cross-validation
-        cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
-        scores = []
-        for train_idx, valid_idx in cv.split(X_train, y_train):
-            X_tr, X_val = X_train.iloc[train_idx], X_train.iloc[valid_idx]
-            y_tr, y_val = y_train.iloc[train_idx], y_train.iloc[valid_idx]
 
-            clf.fit(X_tr, y_tr)
-            y_proba = clf.predict_proba(X_val)[:, 1]
-            score = roc_auc_score(y_val, y_proba)
-            scores.append(score)
+def objective_rf(trial, X, y, preprocessor):
+    """
+    Objective function for Random Forest hyperparameter tuning using Optuna.
+    """
+    params = {
+        'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
+        'max_depth': trial.suggest_int('max_depth', 3, 20),
+        'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),
+        'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10),
+        'max_features': trial.suggest_categorical(
+            'max_features', ['auto', 'sqrt', 'log2']
+        ),
+    }
+    model = RandomForestClassifier(**params, random_state=RANDOM_STATE)
+    pipeline = get_model_pipeline(preprocessor, model)
 
-        return np.mean(scores)
+    # Use cross-validation
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    scores = cross_val_score(
+        pipeline, X, y, cv=cv, scoring='roc_auc', n_jobs=-1
+    )
+    return np.mean(scores)
 
+
+def objective_logistic(trial, X, y, preprocessor):
+    """
+    Objective function for Logistic Regression hyperparameter tuning using Optuna.
+    """
+    penalty = trial.suggest_categorical('penalty', ['l1', 'l2'])
+    C = trial.suggest_loguniform('C', 1e-4, 1e2)
+    solver = 'liblinear' if penalty == 'l1' else 'lbfgs'
+    model = LogisticRegression(
+        penalty=penalty,
+        C=C,
+        solver=solver,
+        random_state=RANDOM_STATE,
+        max_iter=1000,
+    )
+    pipeline = get_model_pipeline(preprocessor, model)
+
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=RANDOM_STATE)
+    scores = cross_val_score(
+        pipeline, X, y, cv=cv, scoring='roc_auc', n_jobs=-1
+    )
+    return np.mean(scores)
+
+
+def objective_xgb(trial, X, y, preprocessor):
+    """
+    Objective function for XGBoost hyperparameter tuning using Optuna.
+    """
+    params = {
+        'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
+        'max_depth': trial.suggest_int('max_depth', 3, 10),
+        'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 0.3),
+        'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+        'gamma': trial.suggest_float('gamma', 0, 5),
+        'reg_alpha': trial.suggest_float('reg_alpha', 0, 5),
+        'reg_lambda': trial.suggest_float('reg_lambda', 0, 5),
+    }
+    model = xgb.XGBClassifier(
+        **params,
+        use_label_encoder=False,
+        eval_metric='logloss',
+        random_state=RANDOM_STATE,
+    )
+    pipeline = get_model_pipeline(preprocessor, model)
+
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
+    scores = cross_val_score(
+        pipeline, X, y, cv=cv, scoring='roc_auc', n_jobs=-1
+    )
+    return np.mean(scores)
+
+
+def objective_lgb(trial, X, y, preprocessor):
+    """
+    Objective function for LightGBM hyperparameter tuning using Optuna.
+    """
+    params = {
+        'n_estimators': trial.suggest_int('n_estimators', 100, 1000, step=100),
+        'max_depth': trial.suggest_int('max_depth', -1, 20),
+        'learning_rate': trial.suggest_loguniform('learning_rate', 0.01, 0.3),
+        'num_leaves': trial.suggest_int('num_leaves', 31, 128),
+        'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+        'reg_alpha': trial.suggest_float('reg_alpha', 0, 5),
+        'reg_lambda': trial.suggest_float('reg_lambda', 0, 5),
+    }
+    model = lgb.LGBMClassifier(**params, random_state=RANDOM_STATE)
+    pipeline = get_model_pipeline(preprocessor, model)
+
+    cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
+    scores = cross_val_score(
+        pipeline, X, y, cv=cv, scoring='roc_auc', n_jobs=-1
+    )
+    return np.mean(scores)
+
+
+def run_study(objective, X, y, preprocessor, n_trials=20):
+    """
+    Run an Optuna study for hyperparameter tuning.
+    """
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=20)
-    print(f"Best Trial: {study.best_trial.params}")
+    func = lambda trial: objective(trial, X, y, preprocessor)
+    study.optimize(func, n_trials=n_trials)
+    return study
 
-    # Return the best model
-    best_params = study.best_trial.params
-    if model_name == 'LogisticRegression':
-        penalty = best_params['penalty']
-        C = best_params['C']
-        solver = 'liblinear' if penalty == 'l1' else 'lbfgs'
-        best_model = LogisticRegression(penalty=penalty, C=C, solver=solver, random_state=42)
-    elif model_name == 'RandomForest':
-        best_model = RandomForestClassifier(
-            n_estimators=best_params['n_estimators'],
-            max_depth=best_params['max_depth'],
-            min_samples_split=best_params['min_samples_split'],
-            random_state=42
-        )
-    elif model_name == 'XGBoost':
-        best_params['verbosity'] = 0
-        best_params['objective'] = 'binary:logistic'
-        best_params['eval_metric'] = 'auc'
-        best_params['use_label_encoder'] = False
-        best_params['booster'] = 'gbtree'
-        best_model = xgb.XGBClassifier(**best_params)
-    elif model_name == 'LightGBM':
-        best_params['objective'] = 'binary'
-        best_params['metric'] = 'auc'
-        best_model = lgb.LGBMClassifier(**best_params)
-    else:
-        best_model = None
 
-    return best_model
+def evaluate_model(model, X_train, y_train, X_test, y_test, preprocessor):
+    """
+    Evaluate the model on the test set and print metrics.
+    """
+    # Create pipeline
+    pipeline = get_model_pipeline(preprocessor, model)
 
-# Main Function
+    # Fit pipeline on training data
+    pipeline.fit(X_train, y_train)
+
+    # Predict probabilities and labels
+    y_pred_proba = pipeline.predict_proba(X_test)[:, 1]
+    y_pred = pipeline.predict(X_test)
+
+    # Compute ROC AUC
+    roc_auc = roc_auc_score(y_test, y_pred_proba)
+    print(f"Test ROC AUC: {roc_auc:.4f}")
+
+    # Print classification report
+    print("Classification Report:")
+    print(classification_report(y_test, y_pred))
+
+    # Plot confusion matrix
+    cm = confusion_matrix(y_test, y_pred)
+    plt.figure(figsize=(6, 4))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted')
+    plt.ylabel('Actual')
+    plt.show()
+
+    # Plot ROC curve
+    fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+    plt.figure(figsize=(6, 4))
+    plt.plot(fpr, tpr, label=f'ROC AUC = {roc_auc:.4f}')
+    plt.plot([0, 1], [0, 1], linestyle='--')  # Random classifier line
+    plt.title('ROC Curve')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.legend()
+    plt.show()
+
+    return pipeline, roc_auc
+
+
 def main():
-    # Load and preprocess data
-    df = load_data()
-    X, y, preprocessor = preprocess_data(df)
+    # Load data
+    df = pd.read_csv('your_dataset.csv')  # Replace with your dataset path
 
-    # Handle class imbalance
-    X_resampled, y_resampled = balance_data(X, y)
+    # Preprocess data
+    X, y, preprocessor = preprocess_data(df)
 
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(
-        X_resampled, y_resampled, test_size=0.2, random_state=42, stratify=y_resampled
+        X, y, test_size=0.2, stratify=y, random_state=RANDOM_STATE
     )
 
-    # Models to train
-    models = {
-        'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000),
-        'RandomForest': RandomForestClassifier(random_state=42),
-        'XGBoost': xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42),
-        'LightGBM': lgb.LGBMClassifier(random_state=42)
+    # Run studies for each model
+    print("Running hyperparameter tuning for Random Forest...")
+    study_rf = run_study(objective_rf, X_train, y_train, preprocessor)
+    print(f"Best ROC AUC for Random Forest: {study_rf.best_value:.4f}")
+    print(f"Best parameters: {study_rf.best_params}\n")
+
+    print("Running hyperparameter tuning for Logistic Regression...")
+    study_logistic = run_study(
+        objective_logistic, X_train, y_train, preprocessor
+    )
+    print(
+        f"Best ROC AUC for Logistic Regression: {study_logistic.best_value:.4f}"
+    )
+    print(f"Best parameters: {study_logistic.best_params}\n")
+
+    print("Running hyperparameter tuning for XGBoost...")
+    study_xgb = run_study(objective_xgb, X_train, y_train, preprocessor)
+    print(f"Best ROC AUC for XGBoost: {study_xgb.best_value:.4f}")
+    print(f"Best parameters: {study_xgb.best_params}\n")
+
+    print("Running hyperparameter tuning for LightGBM...")
+    study_lgb = run_study(objective_lgb, X_train, y_train, preprocessor)
+    print(f"Best ROC AUC for LightGBM: {study_lgb.best_value:.4f}")
+    print(f"Best parameters: {study_lgb.best_params}\n")
+
+    # Compare models
+    best_studies = {
+        'Random Forest': study_rf,
+        'Logistic Regression': study_logistic,
+        'XGBoost': study_xgb,
+        'LightGBM': study_lgb,
     }
+    # Select best model
+    best_model_name = max(best_studies, key=lambda k: best_studies[k].best_value)
+    print(f"Best model: {best_model_name}\n")
 
-    # Dictionary to store results
-    model_results = {}
-
-    for model_name, model in models.items():
-        print(f"\nTraining {model_name}...")
-
-        # Hyperparameter tuning
-        print("Performing hyperparameter tuning...")
-        best_model = hyperparameter_tuning(X_train, y_train, preprocessor, model_name)
-
-        # Train and evaluate model
-        print("Training and evaluating model...")
-        clf, roc_auc = train_evaluate_model(
-            X_train, y_train, X_test, y_test, preprocessor, best_model, model_name
+    # Retrieve the best parameters and model
+    if best_model_name == 'Random Forest':
+        best_params = study_rf.best_params
+        model = RandomForestClassifier(**best_params, random_state=RANDOM_STATE)
+    elif best_model_name == 'Logistic Regression':
+        best_params = study_logistic.best_params
+        penalty = best_params['penalty']
+        C = best_params['C']
+        solver = 'liblinear' if penalty == 'l1' else 'lbfgs'
+        model = LogisticRegression(
+            penalty=penalty,
+            C=C,
+            solver=solver,
+            random_state=RANDOM_STATE,
+            max_iter=1000,
         )
+    elif best_model_name == 'XGBoost':
+        best_params = study_xgb.best_params
+        model = xgb.XGBClassifier(
+            **best_params,
+            use_label_encoder=False,
+            eval_metric='logloss',
+            random_state=RANDOM_STATE,
+        )
+    elif best_model_name == 'LightGBM':
+        best_params = study_lgb.best_params
+        model = lgb.LGBMClassifier(**best_params, random_state=RANDOM_STATE)
+    else:
+        raise ValueError("Invalid model name")
 
-        # Store the trained pipeline and performance
-        model_results[model_name] = {
-            'pipeline': clf,
-            'roc_auc': roc_auc
-        }
+    # Evaluate the best model
+    pipeline, roc_auc = evaluate_model(
+        model, X_train, y_train, X_test, y_test, preprocessor
+    )
+    print(
+        f"Test ROC AUC of the best model ({best_model_name}): {roc_auc:.4f}\n"
+    )
 
-    # Select the best model
-    best_model_name = max(model_results, key=lambda k: model_results[k]['roc_auc'])
-    print(f"\nBest Model: {best_model_name} with ROC AUC: {model_results[best_model_name]['roc_auc']:.4f}")
+    # Predict churn probabilities on the entire dataset
+    pipeline.fit(X_train, y_train)
+    y_pred_proba_all = pipeline.predict_proba(X)[:, 1]
+    y_pred_all = pipeline.predict(X)
 
-    # Predict churn probabilities on the original dataset
-    print("\nPredicting churn probabilities on the original dataset...")
-    best_pipeline = model_results[best_model_name]['pipeline']
-    churn_probabilities = best_pipeline.predict_proba(X)[:, 1]
-    df['churn_probability'] = churn_probabilities
-    df['predicted_churn'] = (df['churn_probability'] >= 0.5).astype(int)
+    # Add predictions to the original DataFrame
+    df['churn_probability'] = y_pred_proba_all
+    df['predicted_churn'] = y_pred_all
 
-    # Display predictions
-    print(df[['churn_flag', 'churn_probability', 'predicted_churn']].head())
+    # Save the model if needed
+    # import joblib
+    # joblib.dump(pipeline, 'best_model_pipeline.pkl')
 
-    # Save the best model
-    print("\nSaving the best model...")
-    import joblib
-    joblib.dump(best_pipeline, f'best_model_{best_model_name}.pkl')
-    print("Model saved successfully.")
+    # Optional: Model interpretability using SHAP (for tree-based models)
+    if best_model_name in ['Random Forest', 'XGBoost', 'LightGBM']:
+        # Preprocess data
+        X_processed = preprocessor.fit_transform(X)
+        # Fit model on the entire dataset
+        model.fit(X_processed, y)
+        # Compute SHAP values
+        import shap
+
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(X_processed)
+        # Plot SHAP summary plot
+        shap.summary_plot(shap_values, X_processed)
+
+    # The final DataFrame df now contains 'churn_probability' and 'predicted_churn'
+    # You can save df to a CSV file if needed
+    # df.to_csv('churn_predictions.csv', index=False)
+
 
 if __name__ == '__main__':
     main()

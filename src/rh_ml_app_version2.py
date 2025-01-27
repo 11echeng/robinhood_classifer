@@ -5,56 +5,23 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import roc_auc_score, classification_report
+from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 import xgboost as xgb
 import lightgbm as lgb
-from catboost import CatBoostClassifier
 from imblearn.over_sampling import SMOTE
+from imblearn.pipeline import Pipeline as ImbPipeline
 import optuna
 from optuna.integration import SklearnPruningCallback
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from skorch import NeuralNetClassifier
-from sklearn.base import TransformerMixin, BaseEstimator
 import warnings
-
 warnings.filterwarnings('ignore')
-
-# Define DenseTransformer to convert sparse matrix to dense
-class DenseTransformer(TransformerMixin, BaseEstimator):
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X, y=None):
-        return X.toarray()
-
-# Define PyTorch Neural Network Model
-class NeuralNet(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, dropout_rate):
-        super(NeuralNet, self).__init__()
-        layers = []
-        in_features = input_size
-        for _ in range(num_layers):
-            layers.append(nn.Linear(in_features, hidden_size))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout_rate))
-            in_features = hidden_size
-        layers.append(nn.Linear(hidden_size, 1))
-        layers.append(nn.Sigmoid())
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x)
 
 # Load Data
 def load_data():
-    # Replace this with your actual data loading code
+    # Assuming df is already loaded
     # df = pd.read_csv('your_dataset.csv')
     # For demonstration, let's assume df is provided
-    # Ensure df is defined before this function is called
     return df.copy()
 
 # Preprocess Data
@@ -100,7 +67,13 @@ def balance_data(X, y):
     return X_resampled, y_resampled
 
 # Define Model Training and Evaluation Pipeline
-def train_evaluate_model(X_train, y_train, X_test, y_test, clf, model_name):
+def train_evaluate_model(X_train, y_train, X_test, y_test, preprocessor, model, model_name):
+    # Create a pipeline
+    clf = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('classifier', model)
+    ])
+
     # Fit the model
     clf.fit(X_train, y_train)
 
@@ -160,65 +133,14 @@ def hyperparameter_tuning(X_train, y_train, preprocessor, model_name):
                 'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
             }
             model = lgb.LGBMClassifier(**param)
-        elif model_name == 'CatBoost':
-            param = {
-                'iterations': trial.suggest_int('iterations', 100, 1000, step=100),
-                'depth': trial.suggest_int('depth', 4, 10),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-                'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1e-3, 10.0, log=True),
-                'border_count': trial.suggest_int('border_count', 32, 255),
-            }
-            model = CatBoostClassifier(**param, silent=True, random_state=42)
-        elif model_name == 'PyTorch':
-            # Hyperparameters to tune
-            num_layers = trial.suggest_int('num_layers', 1, 3)
-            hidden_size = trial.suggest_int('hidden_size', 32, 256, step=32)
-            dropout_rate = trial.suggest_float('dropout_rate', 0.0, 0.5)
-            lr = trial.suggest_float('lr', 1e-4, 1e-1, log=True)
-            batch_size = trial.suggest_int('batch_size', 16, 128, step=16)
-            max_epochs = trial.suggest_int('max_epochs', 10, 50, step=10)
-
-            # Fit the preprocessor to get input size
-            preprocessor.fit(X_train)
-            X_train_processed = preprocessor.transform(X_train)
-            input_size = X_train_processed.shape[1]
-
-            # Define the PyTorch model
-            module = NeuralNet(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout_rate=dropout_rate
-            )
-
-            # Use skorch NeuralNetClassifier
-            model = NeuralNetClassifier(
-                module=module,
-                max_epochs=max_epochs,
-                lr=lr,
-                batch_size=batch_size,
-                optimizer=optim.Adam,
-                criterion=nn.BCELoss,
-                iterator_train__shuffle=True,
-                verbose=0,
-                device='cuda' if torch.cuda.is_available() else 'cpu'
-            )
-
-            # Create pipeline
-            clf = Pipeline(steps=[
-                ('preprocessor', preprocessor),
-                ('to_dense', DenseTransformer()),
-                ('classifier', model)
-            ])
         else:
-            return 0  # Invalid model name
+            return 0
 
-        if model_name != 'PyTorch':
-            # Create pipeline
-            clf = Pipeline(steps=[
-                ('preprocessor', preprocessor),
-                ('classifier', model)
-            ])
+        # Create pipeline
+        clf = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', model)
+        ])
 
         # Cross-validation
         cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
@@ -263,56 +185,10 @@ def hyperparameter_tuning(X_train, y_train, preprocessor, model_name):
         best_params['objective'] = 'binary'
         best_params['metric'] = 'auc'
         best_model = lgb.LGBMClassifier(**best_params)
-    elif model_name == 'CatBoost':
-        best_model = CatBoostClassifier(**best_params, silent=True, random_state=42)
-    elif model_name == 'PyTorch':
-        num_layers = best_params['num_layers']
-        hidden_size = best_params['hidden_size']
-        dropout_rate = best_params['dropout_rate']
-        lr = best_params['lr']
-        batch_size = best_params['batch_size']
-        max_epochs = best_params['max_epochs']
-
-        # Fit the preprocessor to get input size
-        preprocessor.fit(X_train)
-        X_train_processed = preprocessor.transform(X_train)
-        input_size = X_train_processed.shape[1]
-
-        module = NeuralNet(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout_rate=dropout_rate
-        )
-
-        best_model = NeuralNetClassifier(
-            module=module,
-            max_epochs=max_epochs,
-            lr=lr,
-            batch_size=batch_size,
-            optimizer=optim.Adam,
-            criterion=nn.BCELoss,
-            iterator_train__shuffle=True,
-            verbose=0,
-            device='cuda' if torch.cuda.is_available() else 'cpu'
-        )
-
-        # Create pipeline with DenseTransformer
-        clf = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            ('to_dense', DenseTransformer()),
-            ('classifier', best_model)
-        ])
-        return clf
     else:
         best_model = None
 
-    # Create pipeline
-    clf = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('classifier', best_model)
-    ])
-    return clf
+    return best_model
 
 # Main Function
 def main():
@@ -333,25 +209,23 @@ def main():
         'LogisticRegression': LogisticRegression(random_state=42, max_iter=1000),
         'RandomForest': RandomForestClassifier(random_state=42),
         'XGBoost': xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42),
-        'LightGBM': lgb.LGBMClassifier(random_state=42),
-        'CatBoost': CatBoostClassifier(silent=True, random_state=42),
-        'PyTorch': 'PyTorch'  # Placeholder for model name
+        'LightGBM': lgb.LGBMClassifier(random_state=42)
     }
 
     # Dictionary to store results
     model_results = {}
 
-    for model_name in models.keys():
+    for model_name, model in models.items():
         print(f"\nTraining {model_name}...")
 
         # Hyperparameter tuning
         print("Performing hyperparameter tuning...")
-        best_model_pipeline = hyperparameter_tuning(X_train, y_train, preprocessor, model_name)
+        best_model = hyperparameter_tuning(X_train, y_train, preprocessor, model_name)
 
         # Train and evaluate model
         print("Training and evaluating model...")
         clf, roc_auc = train_evaluate_model(
-            X_train, y_train, X_test, y_test, best_model_pipeline, model_name
+            X_train, y_train, X_test, y_test, preprocessor, best_model, model_name
         )
 
         # Store the trained pipeline and performance
