@@ -64,7 +64,7 @@ Definition of Churn – Merchant having at least 1 order for 2016 and 0 order fo
 
 * Q2. Write a query to report WOW (Week over Week) sales for each product category for trailing 6 weeks?
 
-### Dicks Questions:
+### Dick's Sporting Goods Questions:
 * Q1. See imgs directory
 
 * Q2. See imgs directory
