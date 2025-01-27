@@ -1,0 +1,64 @@
+I. Confusion Matrix Terms
+	a. These are foundational concepts for understanding classification performance:
+		- True Positive (TP): 
+			- Predicted positive and is actually positive.
+			- "I think I can make it, and I make it!"
+
+		- False Positive (FP): 
+			- Predicted positive but is actually negative 
+			- (Type I Error) 
+			- False Alarm/Resource wasted
+			- Rejecting a true null hypothesis.
+			- "I think I can make it, but I miss."
+
+		- True Negative (TN): 
+			- Predicted negative and is actually negative.
+			- "I think I will miss, and I do!"
+
+		- False Negative (FN): 
+			- Predicted negative but is actually positive 
+			- (Type II Error).
+			- Failing to reject a false null hypothesis.
+			- Missed Opportunity/Losing a customer
+			- "I think I will miss, but I don't."
+
+II. Classification Metrics:
+	a. Accuracy:
+		- Measures the overall correctness of the model 
+		- (TP+TN)/(TP+TN+FP+FN)
+		- "How was your decision making overall? How many were you correct?"
+		- GPT: "Out of all your decisions, how often were you right?"
+
+	b. Precision: 
+		- Focuses on how many predicted positives are actually positive
+		- (TP)/(TP+FP)
+		- "How many shots did you actually make out of what you took"
+		- GPT: "Player, when you decide to shoot, how often does it actually go in? Are you confident in your shot selection?"
+		- In close games, Precision matters most. You can’t afford to take bad shots. Need high-percentage looks only
+
+	c. Recall/Sensitvity/True Positive Rate: 
+		- Measures how well the model identified positives
+		- (TP)/(TP+FN)
+		- "How aggressive were you? How many shots you made over how many you SHOULD'VE took"
+		- GPT: Player, are you taking enough shots when you’re open? Are you being too hesitant?"
+ 		- In a game where the score doesn’t matter, Recall might be prioritized. Take every open shot and practice your rhythm
+
+	d. F1 Score:
+		- Used when classes are imbalanced. 
+		- It's a mix of Precision/Recall when both are low.
+
+	e. Specificity/False Positive Rate: 
+		- Measures how well the model identified negatives
+		- (TN)/(TN+FP)
+
+	f. ROC-AUC:
+		- Measures the trade-off between True Positive Rate(Recall) and False Positive Rate
+		- This metric helps evaluate the trade-off between taking more shots (Recall) vs avoiding bad shots (Precision). 
+		  You can adjust the player’s playstyle to maximize this trade-off.
+
+	g. Log Loss:
+		- Evaluates the probability outputs of a classifier
+
+
+
+How to handle imbalanced data (resampling, weighting, SMOTE).
