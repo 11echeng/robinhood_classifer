@@ -69,6 +69,23 @@ Definition of Churn – Merchant having at least 1 order for 2016 and 0 order fo
 
 * Q2. See imgs directory
 
+### Data Mapping:
+| **Table Name**            | **Company**             |
+|---------------------------|-------------------------|
+| ds1_data                  | MLB                     |
+| ds2_data                  | MLB                     |
+| equity_value_data         | Robinhood               |
+| features_data             | Robinhood               |
+| klaviyo_data              | Klaviyo                 |
+| merchants                 | Amazon                  |
+| orders                    | Amazon                  |
+| products_q1_v1_data       | Dick's Sporting Goods   |
+| products_q1_v2_data       | Dick's Sporting Goods   |
+| products_q1_v3_data       | Dick's Sporting Goods   |
+| transactions_q2_v1_data   | Dick's Sporting Goods   |
+| transactions_q2_v2_data   | Dick's Sporting Goods   |
+| transactions_q2_v3_data   | Dick's Sporting Goods   |
+
 ### Getting Started:
 Check out this project repo, then add an .env credentials, case-sensitive, to the root if not there already:
 ```
